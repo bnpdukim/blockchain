@@ -1,7 +1,7 @@
-pragma solidity ^0.4.8;
+pragma solidity ^0.4.21;
 
 // 캐시백 기능이 추가된 가상 화폐
-contract OreOreCoin {
+contract OreOreCoin3 {
     // (1) 상태 변수 선언
     string public name; // 토큰 이름
     string public symbol; // 토큰 단위
@@ -13,7 +13,7 @@ contract OreOreCoin {
     address public owner; // 소유자 주소
 
     // 수식자
-    modifier onlyOwner() { if (msg.sender != owner) throw; _; }
+    modifier onlyOwner() { if (msg.sender != owner) revert("contract의 소유자가 아닙니다."); _; }
 
     // (2) 이벤트 알림
     event Transfer(address indexed from, address indexed to, uint256 value);
@@ -25,7 +25,7 @@ contract OreOreCoin {
     event Cashback(address indexed from, address indexed to, uint256 value);
 
     // 생성자
-    function OreOreCoin(uint256 _supply, string _name, string _symbol, uint8 _decimals) {
+    constructor(uint256 _supply, string _name, string _symbol, uint8 _decimals) public {
         balanceOf[msg.sender] = _supply;
         name = _name;
         symbol = _symbol;
@@ -35,19 +35,19 @@ contract OreOreCoin {
     }
 
     // 주소를 블랙리스트에 등록
-    function blacklisting(address _addr) onlyOwner {
+    function blacklisting(address _addr) onlyOwner public {
         blackList[_addr] = 1;
-        Blacklisted(_addr);
+        emit Blacklisted(_addr);
     }
 
     // 주소를 블랙리스트에서 제거
-    function deleteFromBlacklist(address _addr) onlyOwner {
+    function deleteFromBlacklist(address _addr) onlyOwner public {
         blackList[_addr] = -1;
-        DeleteFromBlacklist(_addr);
+        emit DeleteFromBlacklist(_addr);
     }
 
     // (3) 캐시백 비율 설정
-    function setCashbackRate(int8 _rate) {
+    function setCashbackRate(int8 _rate) public {
         if (_rate < 1) {
             _rate = -1;
         } else if (_rate > 100) {
@@ -57,20 +57,20 @@ contract OreOreCoin {
         if (_rate < 1) {
             _rate = 0;
         }
-        SetCashback(msg.sender, _rate);
+        emit SetCashback(msg.sender, _rate);
     }
 
     // 송금
-    function transfer(address _to, uint256 _value) {
+    function transfer(address _to, uint256 _value) public {
         // 부정 송금 확인
-        if (balanceOf[msg.sender] < _value) throw;
-        if (balanceOf[_to] + _value < balanceOf[_to]) throw;
+        if (balanceOf[msg.sender] < _value) revert("not enough token");
+        if (balanceOf[_to] + _value < balanceOf[_to]) revert("token overflow");
 
         // 블랙리스트에 존재하는 주소는 입출금 불가
         if (blackList[msg.sender] > 0) {
-            RejectedPaymentFromBlacklistedAddr(msg.sender, _to, _value);
+            emit RejectedPaymentFromBlacklistedAddr(msg.sender, _to, _value);
         } else if (blackList[_to] > 0) {
-            RejectedPaymentToBlacklistedAddr(msg.sender, _to, _value);
+            emit RejectedPaymentToBlacklistedAddr(msg.sender, _to, _value);
         } else {
             // (4) 캐시백 금액 계산(각 대상의 캐시백 비율을 사용)
             uint256 cashback = 0;
@@ -79,8 +79,8 @@ contract OreOreCoin {
             balanceOf[msg.sender] -= (_value - cashback);
             balanceOf[_to] += (_value - cashback);
 
-            Transfer(msg.sender, _to, _value);
-            Cashback(_to, msg.sender, cashback);
+            emit Transfer(msg.sender, _to, _value);
+            emit Cashback(_to, msg.sender, cashback);
         }
     }
 }

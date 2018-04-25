@@ -65,3 +65,5 @@ atlassian-ide-plugin.xml
 
 /bin/*
 */bin
+
+/node_modules

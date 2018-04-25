@@ -1,7 +1,7 @@
-pragma solidity ^0.4.8;
+pragma solidity ^0.4.21;
 
 // 블랙리스트 기능을 추가한 가상 화폐
-contract OreOreCoin {
+contract OreOreCoin2 {
     // (1) 상태 변수 선언
     string public name; // 토큰 이름
     string public symbol; // 토큰 단위
@@ -12,7 +12,7 @@ contract OreOreCoin {
     address public owner; // 소유자 주소
 
     // (2) 수식자
-    modifier onlyOwner() { if (msg.sender != owner) throw; _; }
+    modifier onlyOwner() { if (msg.sender != owner) revert("contract의 소유자가 아닙니다."); _; }
 
     // (3) 이벤트 알림
     event Transfer(address indexed from, address indexed to, uint256 value);
@@ -22,7 +22,7 @@ contract OreOreCoin {
     event RejectedPaymentFromBlacklistedAddr(address indexed from, address indexed to, uint256 value);
 
     // (4) 생성자
-    function OreOreCoin(uint256 _supply, string _name, string _symbol, uint8 _decimals) {
+    constructor(uint256 _supply, string _name, string _symbol, uint8 _decimals) public {
         balanceOf[msg.sender] = _supply;
         name = _name;
         symbol = _symbol;
@@ -32,31 +32,31 @@ contract OreOreCoin {
     }
 
     // (5) 주소를 블랙리스트에 등록
-    function blacklisting(address _addr) onlyOwner {
+    function blacklisting(address _addr) onlyOwner public {
         blackList[_addr] = 1;
-        Blacklisted(_addr);
+        emit Blacklisted(_addr);
     }
 
     // (6) 주소를 블랙리스트에서 제거
-    function deleteFromBlacklist(address _addr) onlyOwner {
+    function deleteFromBlacklist(address _addr) onlyOwner public {
         blackList[_addr] = -1;
-        DeleteFromBlacklist(_addr);
+        emit DeleteFromBlacklist(_addr);
     }
 
     // (7) 송금
-    function transfer(address _to, uint256 _value) {
+    function transfer(address _to, uint256 _value) public {
         // 부정 송금 확인
-        if (balanceOf[msg.sender] < _value) throw;
-        if (balanceOf[_to] + _value < balanceOf[_to]) throw;
+        if (balanceOf[msg.sender] < _value) revert("not enough token");
+        if (balanceOf[_to] + _value < balanceOf[_to]) revert("token overflow");
         // 블랙리스트에 존재하는 주소는 입출금 불가
         if (blackList[msg.sender] > 0) {
-            RejectedPaymentFromBlacklistedAddr(msg.sender, _to, _value);
+            emit RejectedPaymentFromBlacklistedAddr(msg.sender, _to, _value);
         } else if (blackList[_to] > 0) {
-            RejectedPaymentToBlacklistedAddr(msg.sender, _to, _value);
+            emit RejectedPaymentToBlacklistedAddr(msg.sender, _to, _value);
         } else {
             balanceOf[msg.sender] -= _value;
             balanceOf[_to] += _value;
-            Transfer(msg.sender, _to, _value);
+            emit Transfer(msg.sender, _to, _value);
         }
     }
 }

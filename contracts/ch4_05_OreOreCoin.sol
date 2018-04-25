@@ -1,4 +1,4 @@
-pragma solidity ^0.4.8;
+pragma solidity ^0.4.21;
 
 // 소유자 관리용 계약
 contract Owned {
@@ -9,18 +9,18 @@ contract Owned {
     event TransferOwnership(address oldaddr, address newaddr);
 
     // 소유자 한정 메서드용 수식자
-    modifier onlyOwner() { if (msg.sender != owner) throw; _; }
+    modifier onlyOwner() { if (msg.sender != owner) revert("contract의 소유자가 아닙니다."); _; }
 
     // 생성자
-    function Owned() {
+    constructor() public {
         owner = msg.sender; // 처음에 계약을 생성한 주소를 소유자로 한다
     }
 
     // (1) 소유자 변경
-    function transferOwnership(address _new) onlyOwner {
+    function transferOwnership(address _new) onlyOwner public {
         address oldaddr = owner;
         owner = _new;
-        TransferOwnership(oldaddr, owner);
+        emit TransferOwnership(oldaddr, owner);
     }
 }
 
@@ -49,12 +49,12 @@ contract Members is Owned {
     modifier onlyCoin() { if (msg.sender == coin) _; }
 
     // (6) 토큰 주소 설정
-    function setCoin(address _addr) onlyOwner {
+    function setCoin(address _addr) onlyOwner public {
         coin = _addr;
     }
 
     // (7) 회원 등급 추가
-    function pushStatus(string _name, uint256 _times, uint256 _sum, int8 _rate) onlyOwner {
+    function pushStatus(string _name, uint256 _times, uint256 _sum, int8 _rate) onlyOwner public {
         status.push(MemberStatus({
             name: _name,
             times: _times,
@@ -64,7 +64,7 @@ contract Members is Owned {
     }
 
     // (8) 회원 등급 내용 변경
-    function editStatus(uint256 _index, string _name, uint256 _times, uint256 _sum, int8 _rate) onlyOwner {
+    function editStatus(uint256 _index, string _name, uint256 _times, uint256 _sum, int8 _rate) onlyOwner public {
         if (_index < status.length) {
             status[_index].name = _name;
             status[_index].times = _times;
@@ -74,7 +74,7 @@ contract Members is Owned {
     }
 
     // (9) 거래 내역 갱신
-    function updateHistory(address _member, uint256 _value) onlyCoin {
+    function updateHistory(address _member, uint256 _value) onlyCoin public {
         tradingHistory[_member].times += 1;
         tradingHistory[_member].sum += _value;
         // 새로운 회원 등급 결정(거래마다 실행)
@@ -92,13 +92,13 @@ contract Members is Owned {
     }
 
     // (10) 캐시백 비율 획득(회원의 등급에 해당하는 비율 확인)
-    function getCashbackRate(address _member) constant returns (int8 rate) {
+    function getCashbackRate(address _member) constant public returns (int8 rate) {
         rate = status[tradingHistory[_member].statusIndex].rate;
     }
 }
 
 // (11) 회원 관리 기능이 구현된 가상 화폐
-contract OreOreCoin is Owned{
+contract OreOreCoin5 is Owned{
     // 상태 변수 선언
     string public name; // 토큰 이름
     string public symbol; // 토큰 단위
@@ -117,7 +117,7 @@ contract OreOreCoin is Owned{
     event Cashback(address indexed from, address indexed to, uint256 value);
 
     // 생성자
-    function OreOreCoin(uint256 _supply, string _name, string _symbol, uint8 _decimals) {
+    constructor(uint256 _supply, string _name, string _symbol, uint8 _decimals) public {
         balanceOf[msg.sender] = _supply;
         name = _name;
         symbol = _symbol;
@@ -126,33 +126,33 @@ contract OreOreCoin is Owned{
     }
 
     // 주소를 블랙리스트에 등록
-    function blacklisting(address _addr) onlyOwner {
+    function blacklisting(address _addr) onlyOwner public {
         blackList[_addr] = 1;
-        Blacklisted(_addr);
+        emit Blacklisted(_addr);
     }
 
     // 주소를 블랙리스트에서 해제
-    function deleteFromBlacklist(address _addr) onlyOwner {
+    function deleteFromBlacklist(address _addr) onlyOwner public {
         blackList[_addr] = -1;
-        DeleteFromBlacklist(_addr);
+        emit DeleteFromBlacklist(_addr);
     }
 
     // 회원 관리 계약 설정
-    function setMembers(Members _members) {
+    function setMembers(Members _members) public {
         members[msg.sender] = Members(_members);
     }
 
     // 송금
-    function transfer(address _to, uint256 _value) {
+    function transfer(address _to, uint256 _value) public {
         // 부정 송금 확인
-        if (balanceOf[msg.sender] < _value) throw;
-        if (balanceOf[_to] + _value < balanceOf[_to]) throw;
+        if (balanceOf[msg.sender] < _value) revert("not enough token");
+        if (balanceOf[_to] + _value < balanceOf[_to]) revert("token overflow");
 
         // 블랙리스트에 존재하는 계정은 입출금 불가
         if (blackList[msg.sender] > 0) {
-            RejectedPaymentFromBlacklistedAddr(msg.sender, _to, _value);
+            emit RejectedPaymentFromBlacklistedAddr(msg.sender, _to, _value);
         } else if (blackList[_to] > 0) {
-            RejectedPaymentToBlacklistedAddr(msg.sender, _to, _value);
+            emit RejectedPaymentToBlacklistedAddr(msg.sender, _to, _value);
         } else {
             // (12) 캐시백 금액을 계산(각 대상의 비율을 사용)
             uint256 cashback = 0;
@@ -164,8 +164,8 @@ contract OreOreCoin is Owned{
             balanceOf[msg.sender] -= (_value - cashback);
             balanceOf[_to] += (_value - cashback);
 
-            Transfer(msg.sender, _to, _value);
-            Cashback(_to, msg.sender, cashback);
+            emit Transfer(msg.sender, _to, _value);
+            emit Cashback(_to, msg.sender, cashback);
         }
     }
 }
@@ -179,7 +179,7 @@ contract Crowdsale is Owned {
     uint256 public transferableToken; // 전송 가능 토큰
     uint256 public soldToken; // 판매된 토큰
     uint256 public startTime; // 개시 시간
-    OreOreCoin public tokenReward; // 지불에 사용할 토큰
+    OreOreCoin5 public tokenReward; // 지불에 사용할 토큰
     bool public fundingGoalReached; // 목표 도달 플래그
     bool public isOpened; // 크라우드 세일 개시 플래그
     mapping (address => Property) public fundersProperty; // 자금 제공자의 자산 정보
@@ -202,52 +202,52 @@ contract Crowdsale is Owned {
     modifier afterDeadline() { if (now >= deadline) _; }
 
     // (6) 생성자
-    function Crowdsale (
+    constructor (
         uint _fundingGoalInEthers,
         uint _transferableToken,
         uint _amountOfTokenPerEther,
-        OreOreCoin _addressOfTokenUsedAsReward
-    ) {
+        OreOreCoin5 _addressOfTokenUsedAsReward
+    ) public {
         fundingGoal = _fundingGoalInEthers * 1 ether;
         price = 1 ether / _amountOfTokenPerEther;
         transferableToken = _transferableToken;
-        tokenReward = OreOreCoin(_addressOfTokenUsedAsReward);
+        tokenReward = OreOreCoin5(_addressOfTokenUsedAsReward);
     }
 
     // (7) 이름 없는 함수(Ether 받기)
-    function () payable {
+    function () payable public {
         // 개시 전 또는 기간이 지난 경우 예외 처리
-        if (!isOpened || now >= deadline) throw;
+        if (!isOpened || now >= deadline) revert();
 
         // 받은 Ether와 판매 예정 토큰
         uint amount = msg.value;
         uint token = amount / price * (100 + currentSwapRate()) / 100;
         // 판매 예정 토큰의 확인(예정 수를 초과하는 경우는 예외 처리)
-        if (token == 0 || soldToken + token > transferableToken) throw;
+        if (token == 0 || soldToken + token > transferableToken) revert();
         // 자산 제공자의 자산 정보 변경
         fundersProperty[msg.sender].paymentEther += amount;
         fundersProperty[msg.sender].reservedToken += token;
         soldToken += token;
-        ReservedToken(msg.sender, amount, token);
+        emit ReservedToken(msg.sender, amount, token);
     }
 
     // (8) 개시(토큰이 예정한 수 이상 있다면 개시)
-    function start(uint _durationInMinutes) onlyOwner {
+    function start(uint _durationInMinutes) onlyOwner public {
         if (fundingGoal == 0 || price == 0 || transferableToken == 0 ||
         tokenReward == address(0) || _durationInMinutes == 0 || startTime != 0)
         {
-            throw;
+            revert();
         }
         if (tokenReward.balanceOf(this) >= transferableToken) {
             startTime = now;
             deadline = now + _durationInMinutes * 1 minutes;
             isOpened = true;
-            CrowdsaleStart(fundingGoal, deadline, transferableToken, owner);
+            emit CrowdsaleStart(fundingGoal, deadline, transferableToken, owner);
         }
     }
 
     // (9) 교환 비율(개시 시작부터 시간이 적게 경과할수록 더 많은 보상)
-    function currentSwapRate() constant returns(uint) {
+    function currentSwapRate() constant public returns(uint) {
         if (startTime + 3 minutes > now) {
             return 100;
         } else if (startTime + 5 minutes > now) {
@@ -260,63 +260,63 @@ contract Crowdsale is Owned {
     }
 
     // (10) 남은 시간(분 단위)과 목표와의 차이(eth 단위), 토큰 확인용 메서드
-    function getRemainingTimeEthToken() constant returns(uint min, uint shortage, uint remainToken) {
+    function getRemainingTimeEthToken() constant public returns(uint min, uint shortage, uint remainToken) {
         if (now < deadline) {
             min = (deadline - now) / (1 minutes);
         }
-        shortage = (fundingGoal - this.balance) / (1 ether);
+        shortage = (fundingGoal - address(this).balance) / (1 ether);
         remainToken = transferableToken - soldToken;
     }
 
     // (11) 목표 도달 확인(기한 후 실시 가능)
-    function checkGoalReached() afterDeadline {
+    function checkGoalReached() afterDeadline public {
         if (isOpened) {
             // 모인 Ether와 목표 Ether 비교
-            if (this.balance >= fundingGoal) {
+            if (address(this).balance >= fundingGoal) {
                 fundingGoalReached = true;
             }
             isOpened = false;
-            CheckGoalReached(owner, fundingGoal, this.balance, fundingGoalReached, soldToken);
+            emit CheckGoalReached(owner, fundingGoal, address(this).balance, fundingGoalReached, soldToken);
         }
     }
 
     // (12) 소유자용 인출 메서드(판매 종료 후 실시 가능)
-    function withdrawalOwner() onlyOwner {
-        if (isOpened) throw;
+    function withdrawalOwner() onlyOwner public {
+        if (isOpened) revert();
 
         // 목표 달성: Ether와 남은 토큰. 목표 미달: 토큰
         if (fundingGoalReached) {
             // Ether
-            uint amount = this.balance;
+            uint amount = address(this).balance;
             if (amount > 0) {
                 bool ok = msg.sender.call.value(amount)();
-                WithdrawalEther(msg.sender, amount, ok);
+                emit WithdrawalEther(msg.sender, amount, ok);
             }
             // 남은 토큰
             uint val = transferableToken - soldToken;
             if (val > 0) {
                 tokenReward.transfer(msg.sender, transferableToken - soldToken);
-                WithdrawalToken(msg.sender, val, true);
+                emit WithdrawalToken(msg.sender, val, true);
             }
         } else {
             // 토큰
             uint val2 = tokenReward.balanceOf(this);
             tokenReward.transfer(msg.sender, val2);
-            WithdrawalToken(msg.sender, val2, true);
+            emit WithdrawalToken(msg.sender, val2, true);
         }
     }
 
     // (13) 자금 제공자용 인출 메서드(세일 종료 후 실시 가능)
-    function withdrawal() {
+    function withdrawal() public {
         if (isOpened) return;
         // 이미 인출된 경우 예외 처리
-        if (fundersProperty[msg.sender].withdrawed) throw;
+        if (fundersProperty[msg.sender].withdrawed) revert();
         // 목표 달성: 토큰, 목표 미달 : Ether
         if (fundingGoalReached) {
             if (fundersProperty[msg.sender].reservedToken > 0) {
                 tokenReward.transfer(msg.sender, fundersProperty[msg.sender].reservedToken);
                 fundersProperty[msg.sender].withdrawed = true;
-                WithdrawalToken(
+                emit WithdrawalToken(
                     msg.sender,
                     fundersProperty[msg.sender].reservedToken,
                     fundersProperty[msg.sender].withdrawed
@@ -327,7 +327,7 @@ contract Crowdsale is Owned {
                 if (msg.sender.call.value(fundersProperty[msg.sender].paymentEther)()) {
                     fundersProperty[msg.sender].withdrawed = true;
                 }
-                WithdrawalEther(
+                emit WithdrawalEther(
                     msg.sender,
                     fundersProperty[msg.sender].paymentEther,
                     fundersProperty[msg.sender].withdrawed

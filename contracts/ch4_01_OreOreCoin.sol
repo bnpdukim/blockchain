@@ -1,6 +1,6 @@
-pragma solidity ^0.4.8;
+pragma solidity ^0.4.21;
 
-contract OreOreCoin {
+contract OreOreCoin1 {
     // (1) 상태 변수 선언
     string public name; // 토큰 이름
     string public symbol; // 토큰 단위
@@ -12,7 +12,7 @@ contract OreOreCoin {
     event Transfer(address indexed from, address indexed to, uint256 value);
 
     // (3) 생성자
-    function OreOreCoin(uint256 _supply, string _name, string _symbol, uint8 _decimals) public {
+    constructor(uint256 _supply, string _name, string _symbol, uint8 _decimals) public {
         balanceOf[msg.sender] = _supply;
         name = _name;
         symbol = _symbol;
@@ -24,7 +24,7 @@ contract OreOreCoin {
     function transfer(address _to, uint256 _value) public {
         // (5) 부정 송금 확인
         if( balanceOf[msg.sender] < _value ) revert("not enough token");
-        if( balanceOf[_to] + _value < balanceOf[_to] )revert("token overflow");
+        if( balanceOf[_to] + _value < balanceOf[_to] ) revert("token overflow");
         // (6) 송금하는 주소와 송금받는 주소의 잔고 갱신
         balanceOf[msg.sender] -= _value;
         balanceOf[_to] += _value;

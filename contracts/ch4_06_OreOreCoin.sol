@@ -1,4 +1,4 @@
-pragma solidity ^0.4.8;
+pragma solidity ^0.4.21;
 
 // 소유자 관리용 계약
 contract Owned {
@@ -9,18 +9,18 @@ contract Owned {
     event TransferOwnership(address oldaddr, address newaddr);
 
     // 소유자 한정 메서드용 수식자
-    modifier onlyOwner() { if (msg.sender != owner) throw; _; }
+    modifier onlyOwner() { if (msg.sender != owner) revert("contract의 소유자가 아닙니다."); _; }
 
     // 생성자
-    function Owned() {
+    constructor() public {
         owner = msg.sender; // 처음에 계약을 생성한 주소를 소유자로 한다
     }
 
     // (1) 소유자 변경
-    function transferOwnership(address _new) onlyOwner {
+    function transferOwnership(address _new) onlyOwner public {
         address oldaddr = owner;
         owner = _new;
-        TransferOwnership(oldaddr, owner);
+        emit TransferOwnership(oldaddr, owner);
     }
 }
 
@@ -49,12 +49,12 @@ contract Members is Owned {
     modifier onlyCoin() { if (msg.sender == coin) _; }
 
     // (6) 토큰 주소 설정
-    function setCoin(address _addr) onlyOwner {
+    function setCoin(address _addr) onlyOwner public {
         coin = _addr;
     }
 
     // (7) 회원 등급 추가
-    function pushStatus(string _name, uint256 _times, uint256 _sum, int8 _rate) onlyOwner {
+    function pushStatus(string _name, uint256 _times, uint256 _sum, int8 _rate) onlyOwner public {
         status.push(MemberStatus({
             name: _name,
             times: _times,
@@ -64,7 +64,7 @@ contract Members is Owned {
     }
 
     // (8) 회원 등급 내용 변경
-    function editStatus(uint256 _index, string _name, uint256 _times, uint256 _sum, int8 _rate) onlyOwner {
+    function editStatus(uint256 _index, string _name, uint256 _times, uint256 _sum, int8 _rate) onlyOwner public {
         if (_index < status.length) {
             status[_index].name = _name;
             status[_index].times = _times;
@@ -74,7 +74,7 @@ contract Members is Owned {
     }
 
     // (9) 거래 내역 갱신
-    function updateHistory(address _member, uint256 _value) onlyCoin {
+    function updateHistory(address _member, uint256 _value) onlyCoin public {
         tradingHistory[_member].times += 1;
         tradingHistory[_member].sum += _value;
         // 새로운 회원 등급 결정(거래마다 실행)
@@ -92,13 +92,13 @@ contract Members is Owned {
     }
 
     // (10) 캐시백 비율 획득(회원의 등급에 해당하는 비율 확인)
-    function getCashbackRate(address _member) constant returns (int8 rate) {
+    function getCashbackRate(address _member) constant public returns (int8 rate) {
         rate = status[tradingHistory[_member].statusIndex].rate;
     }
 }
 
 // (11) 회원 관리 기능이 구현된 가상 화폐
-contract OreOreCoin is Owned{
+contract OreOreCoin6 is Owned{
     // 상태 변수 선언
     string public name; // 토큰 이름
     string public symbol; // 토큰 단위
@@ -117,7 +117,7 @@ contract OreOreCoin is Owned{
     event Cashback(address indexed from, address indexed to, uint256 value);
 
     // 생성자
-    function OreOreCoin(uint256 _supply, string _name, string _symbol, uint8 _decimals) {
+    constructor(uint256 _supply, string _name, string _symbol, uint8 _decimals) public {
         balanceOf[msg.sender] = _supply;
         name = _name;
         symbol = _symbol;
@@ -126,33 +126,33 @@ contract OreOreCoin is Owned{
     }
 
     // 주소를 블랙리스트에 등록
-    function blacklisting(address _addr) onlyOwner {
+    function blacklisting(address _addr) onlyOwner public {
         blackList[_addr] = 1;
-        Blacklisted(_addr);
+        emit Blacklisted(_addr);
     }
 
     // 주소를 블랙리스트에서 해제
-    function deleteFromBlacklist(address _addr) onlyOwner {
+    function deleteFromBlacklist(address _addr) onlyOwner public {
         blackList[_addr] = -1;
-        DeleteFromBlacklist(_addr);
+        emit DeleteFromBlacklist(_addr);
     }
 
     // 회원 관리 계약 설정
-    function setMembers(Members _members) {
+    function setMembers(Members _members) public {
         members[msg.sender] = Members(_members);
     }
 
     // 송금
-    function transfer(address _to, uint256 _value) {
+    function transfer(address _to, uint256 _value) public {
         // 부정 송금 확인
-        if (balanceOf[msg.sender] < _value) throw;
-        if (balanceOf[_to] + _value < balanceOf[_to]) throw;
+        if (balanceOf[msg.sender] < _value) revert("not enough token");
+        if (balanceOf[_to] + _value < balanceOf[_to]) revert("token overflow");
 
         // 블랙리스트에 존재하는 계정은 입출금 불가
         if (blackList[msg.sender] > 0) {
-            RejectedPaymentFromBlacklistedAddr(msg.sender, _to, _value);
+            emit RejectedPaymentFromBlacklistedAddr(msg.sender, _to, _value);
         } else if (blackList[_to] > 0) {
-            RejectedPaymentToBlacklistedAddr(msg.sender, _to, _value);
+            emit RejectedPaymentToBlacklistedAddr(msg.sender, _to, _value);
         } else {
             // (12) 캐시백 금액을 계산(각 대상의 비율을 사용)
             uint256 cashback = 0;
@@ -164,8 +164,8 @@ contract OreOreCoin is Owned{
             balanceOf[msg.sender] -= (_value - cashback);
             balanceOf[_to] += (_value - cashback);
 
-            Transfer(msg.sender, _to, _value);
-            Cashback(_to, msg.sender, cashback);
+            emit Transfer(msg.sender, _to, _value);
+            emit Cashback(_to, msg.sender, cashback);
         }
     }
 }
@@ -173,7 +173,7 @@ contract OreOreCoin is Owned{
 // (1) 에스크로
 contract Escrow is Owned {
     // (2) 상태 변수
-    OreOreCoin public token; // 토큰
+    OreOreCoin6 public token; // 토큰
     uint256 public salesVolume; // 판매량
     uint256 public sellingPrice; // 판매 가격
     uint256 public deadline; // 기한
@@ -184,46 +184,46 @@ contract Escrow is Owned {
     event ConfirmedPayment(address addr, uint amount);
 
     // (4) 생성자
-    function Escrow (OreOreCoin _token, uint256 _salesVolume, uint256 _priceInEther) {
-        token = OreOreCoin(_token);
+    constructor(OreOreCoin6 _token, uint256 _salesVolume, uint256 _priceInEther) public {
+        token = OreOreCoin6(_token);
         salesVolume = _salesVolume;
         sellingPrice = _priceInEther * 1 ether;
     }
 
     // (5) 이름 없는 함수(Ether 수령)
-    function () payable {
+    function () payable public {
         // 개시 전 또는 기한이 끝난 경우에는 예외 처리
-        if (!isOpened || now >= deadline) throw;
+        if (!isOpened || now >= deadline) revert();
 
         // 판매 가격 미만인 경우 예외 처리
         uint amount = msg.value;
-        if (amount < sellingPrice) throw;
+        if (amount < sellingPrice) revert();
 
         // 보내는 사람에게 토큰을 전달하고 에스크로 개시 플래그를 false로 설정
         token.transfer(msg.sender, salesVolume);
         isOpened = false;
-        ConfirmedPayment(msg.sender, amount);
+        emit ConfirmedPayment(msg.sender, amount);
     }
 
     // (6) 개시(토큰이 예정 수 이상이라면 개시)
-    function start(uint256 _durationInMinutes) onlyOwner {
-        if (token == address(0) || salesVolume == 0 || sellingPrice == 0 || deadline != 0) throw;
+    function start(uint256 _durationInMinutes) onlyOwner public {
+        if (token == address(0) || salesVolume == 0 || sellingPrice == 0 || deadline != 0) revert();
         if (token.balanceOf(this) >= salesVolume){
             deadline = now + _durationInMinutes * 1 minutes;
             isOpened = true;
-            EscrowStart(salesVolume, sellingPrice, deadline, owner);
+            emit EscrowStart(salesVolume, sellingPrice, deadline, owner);
         }
     }
 
     // (7) 남은 시간 확인용 메서드(분 단위)
-    function getRemainingTime() constant returns(uint min) {
+    function getRemainingTime() constant public returns(uint min) {
         if(now < deadline) {
             min = (deadline - now) / (1 minutes);
         }
     }
 
     // (8) 종료
-    function close() onlyOwner {
+    function close() onlyOwner public {
         // 토큰을 소유자에게 전송
         token.transfer(owner, token.balanceOf(this));
         // 계약을 파기(해당 계약이 보유하고 있는 Ether는 소유자에게 전송
