@@ -1,4 +1,4 @@
-var OreOreCoin = artifacts.require("./OreOreCoin.sol");
+var OreOreCoin = artifacts.require("./OreOreCoin1.sol");
 
 // constructor(uint256 _supply, string _name, string _symbol, uint8 _decimals) public {
 module.exports = function(deployer) {
